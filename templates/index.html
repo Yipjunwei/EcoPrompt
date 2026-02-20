@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ECO Prompt</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+
+  <!-- ── layered background ── -->
+  <div class="bg-canvas" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       SIDE DRAWER — Energy Saved
+  ═══════════════════════════════════════════ -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+
+  <aside class="drawer" id="drawer">
+    <div class="drawer-header">
+      <span class="drawer-title">⚡ Energy Saved</span>
+      <button class="drawer-close" id="drawer-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- hero number -->
+      <div class="energy-hero">
+        <span class="energy-value" id="energy-value">0</span>
+        <span class="energy-unit">tokens saved</span>
+      </div>
+
+      <div class="energy-bar-wrap">
+        <div class="energy-bar-fill" id="energy-bar"></div>
+      </div>
+
+      <!-- stat cards -->
+      <div class="energy-card">
+        <div class="energy-card-icon">🌿</div>
+        <div class="energy-card-info">
+          <span class="energy-card-label">Estimated energy saved</span>
+          <span class="energy-card-val" id="wh-value">0.0000 Wh</span>
+        </div>
+      </div>
+
+      <div class="energy-card">
+        <div class="energy-card-icon">🔍</div>
+        <div class="energy-card-info">
+          <span class="energy-card-label">Queries made</span>
+          <span class="energy-card-val" id="query-count">0</span>
+        </div>
+      </div>
+
+      <div class="energy-card">
+        <div class="energy-card-icon">📉</div>
+        <div class="energy-card-info">
+          <span class="energy-card-label">Avg tokens removed</span>
+          <span class="energy-card-val" id="avg-tokens">0 / query</span>
+        </div>
+      </div>
+
+      <p class="drawer-note">
+        ECO Prompt strips filler words before sending to the model —
+        fewer tokens means less compute and less energy consumed.
+      </p>
+      <!-- Prompt History -->
+      <div class="drawer-section-title">📜 Prompt History</div>
+      <div id="prompt-history" class="prompt-history-list">
+        <p class="no-history">No queries yet.</p>
+      </div>
+      <button class="reset-btn" id="reset-btn">Reset Stats</button>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════════
+       PAGE
+  ═══════════════════════════════════════════ -->
+  <div id="page">
+
+    <!-- hamburger — top left -->
+    <button class="hamburger" id="hamburger-btn" aria-label="Energy savings menu" aria-expanded="false">
+      <span></span>
+      <span></span>
+      <span></span>
+      <div class="ham-badge" id="ham-badge" style="display:none">
+        <span id="badge-val">0</span>
+      </div>
+    </button>
+
+    <main>
+      <div class="card">
+
+        <!-- orb logo -->
+        <div class="logo-orb-wrap" aria-hidden="true">
+          <div class="logo-orb"></div>
+        </div>
+
+        <h1 class="logo-title">ECO Prompt</h1>
+        <p class="logo-tagline">Efficiency in Every Token.</p>
+
+        <!-- search bar -->
+        <div class="search-outer" role="search">
+          <div class="search-inner">
+            <input
+              id="query"
+              type="text"
+              placeholder="Ask me anything"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search query"
+            />
+            <button class="search-btn" id="search-btn" aria-label="Search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="16.5" y1="16.5" x2="22" y2="22"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="status" id="status" aria-live="polite"></div>
+        <div id="result-area" role="region" aria-label="Response"></div>
+
+       
+
+      </div>
+    </main>
+
+   
+  </div>
+
+  <script>
+    /* ── refs ── */
+    const queryInput    = document.getElementById('query');
+    const searchBtn     = document.getElementById('search-btn');
+    const statusEl      = document.getElementById('status');
+    const resultArea    = document.getElementById('result-area');
+    const hamburgerBtn  = document.getElementById('hamburger-btn');
+    const drawer        = document.getElementById('drawer');
+    const overlay       = document.getElementById('drawer-overlay');
+    const drawerClose   = document.getElementById('drawer-close');
+    const resetBtn      = document.getElementById('reset-btn');
+
+    /* ── stats ── */
+    let stats = { saved: 0, queries: 0 };
+
+    function updateUI() {
+      document.getElementById('energy-value').textContent = stats.saved.toLocaleString();
+      const wh = (stats.saved / 1000) * 0.0003;
+      document.getElementById('wh-value').textContent    = wh.toFixed(4) + ' Wh';
+      document.getElementById('query-count').textContent = stats.queries;
+      const avg = stats.queries > 0 ? Math.round(stats.saved / stats.queries) : 0;
+      document.getElementById('avg-tokens').textContent  = avg + ' / query';
+
+      /* progress bar — caps at 10 000 tokens for visual */
+      const pct = Math.min(100, (stats.saved / 10000) * 100);
+      document.getElementById('energy-bar').style.width = pct + '%';
+
+      /* badge */
+      const badge = document.getElementById('ham-badge');
+      if (stats.saved > 0) {
+        badge.style.display = 'flex';
+        document.getElementById('badge-val').textContent =
+          stats.saved > 999 ? (stats.saved / 1000).toFixed(1) + 'k' : stats.saved;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    /* ── drawer ── */
+    function openDrawer()  {
+      drawer.classList.add('open');
+      overlay.classList.add('open');
+      hamburgerBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeDrawer() {
+      drawer.classList.remove('open');
+      overlay.classList.remove('open');
+      hamburgerBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    hamburgerBtn.addEventListener('click', () =>
+      drawer.classList.contains('open') ? closeDrawer() : openDrawer());
+    drawerClose.addEventListener('click', closeDrawer);
+    overlay.addEventListener('click', closeDrawer);
+    resetBtn.addEventListener('click', () => {
+      stats = { saved: 0, queries: 0 };
+      updateUI();
+    });
+
+    /* ── status ── */
+    function setStatus(msg, isError = false) {
+      statusEl.textContent = msg;
+      statusEl.className   = 'status' + (isError ? ' error' : '');
+    }
+
+    /* ── search ── */
+    async function doSearch() {
+      const query = queryInput.value.trim();
+      if (!query) return;
+      searchBtn.disabled = true;
+      resultArea.classList.remove('visible');
+      resultArea.textContent = '';
+      setStatus('Thinking…');
+      try {
+        const res  = await fetch('/api/clean', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+        if (!res.ok) throw new Error('Server error ' + res.status);
+        const data = await res.json();
+        resultArea.textContent = data.output ?? '(no response)';
+        resultArea.classList.add('visible');
+        setStatus('');
+
+        /* tally tokens — server can return tokens_saved, else estimate */
+        const saved = data.tokens_saved ?? Math.max(0, Math.floor(query.length / 5));
+        stats.saved   += saved;
+        stats.queries += 1;
+        updateUI();
+        addToHistory(query);
+      } catch (err) {
+        setStatus(err.message, true);
+      } finally {
+        searchBtn.disabled = false;
+      }
+    }
+    function addToHistory(query) {
+  const list = document.getElementById('prompt-history');
+  
+  // Remove "no history" placeholder
+  const placeholder = list.querySelector('.no-history');
+  if (placeholder) placeholder.remove();
+
+  const item = document.createElement('div');
+  item.className = 'history-item';
+
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  item.innerHTML = `
+    <div>${query.length > 80 ? query.slice(0, 80) + '…' : query}</div>
+    <div class="history-item-time">${time}</div>
+  `;
+
+  // Click to reuse query
+  item.addEventListener('click', () => {
+    queryInput.value = query;
+    closeDrawer();
+    queryInput.focus();
+  });
+
+  // Newest on top
+  list.insertBefore(item, list.firstChild);
+}
+    searchBtn.addEventListener('click', doSearch);
+    queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  </script>
+
+</body>
+</html>
