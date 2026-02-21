@@ -457,3 +457,20 @@ footer a:hover { color: rgba(77,139,255,0.75); }
   color: var(--muted);
   margin-top: 4px;
 }
+/* Make input text white */
+#query,
+#query-chat {
+  color: #ffffff !important;
+}
+
+/* Make placeholder light/visible */
+#query::placeholder,
+#query-chat::placeholder {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+/* If you want the caret (typing cursor) to be white too */
+#query,
+#query-chat {
+  caret-color: #ffffff !important;
+}
