@@ -255,15 +255,15 @@ body {
 }
 
 main {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 60px 24px 48px;
+  flex: 1; display: flex; flex-direction: column;
+  align-items: stretch;  
+  overflow: hidden; padding: 0;
 }
 
 .card {
-  width: 100%; max-width: 680px;
-  display: flex; flex-direction: column; align-items: center;
-  animation: rise 1s var(--ease) both;
+  width: 100%; max-width: 1000px; height: 100%;
+  display: flex; flex-direction: column; animation: none;
+  margin: 0 auto;  /* ← center it when in hero mode */
 }
 @keyframes rise {
   from { opacity:0; transform:translateY(32px); }
@@ -473,4 +473,17 @@ footer a:hover { color: rgba(77,139,255,0.75); }
 #query,
 #query-chat {
   caret-color: #ffffff !important;
+}
+/* Fix chat mode full stretch */
+.card.chat-active {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+.card.chat-active #chat-area {
+  padding: 24px 10% 8px;  /* keeps messages readable on wide screens */
+}
+
+.card.chat-active .chat-input {
+  padding: 12px 10% 20px;
 }
