@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ECO Prompt — Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #070B18;
+      --surface: #0E1525;
+      --border:  rgba(255,255,255,0.07);
+      --blue:    #4D8BFF;
+      --green:   #3EC97A;
+      --yellow:  #F5C542;
+      --red:     #FF6B6B;
+      --text:    #EAEAEA;
+      --muted:   rgba(234,234,234,0.40);
+    }
+
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh; padding: 0;
+    }
+
+    /* ── TOP NAV ── */
+    .nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 40px; border-bottom: 1px solid var(--border);
+      background: rgba(14,21,37,0.80); backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+    .nav-brand .orb {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #80b3ff, #1d55d4);
+      box-shadow: 0 0 16px rgba(77,139,255,0.45);
+    }
+    .nav-brand h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.15em; color: #fff; }
+    .nav-brand span { font-size: 11px; color: var(--muted); letter-spacing: 0.10em; }
+    .nav-right { display: flex; align-items: center; gap: 14px; }
+    .nav-link {
+      font-size: 12px; color: var(--muted); text-decoration: none;
+      padding: 7px 14px; border-radius: 8px; border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { color: var(--blue); border-color: rgba(77,139,255,0.30); }
+    .refresh-btn {
+      padding: 8px 18px; border-radius: 8px; background: rgba(77,139,255,0.10);
+      border: 1px solid rgba(77,139,255,0.30); color: var(--blue);
+      font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+      letter-spacing: 0.05em;
+    }
+    .refresh-btn:hover { background: rgba(77,139,255,0.20); }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+      box-shadow: 0 0 8px var(--green); animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+    /* ── LAYOUT ── */
+    .page { max-width: 1300px; margin: 0 auto; padding: 36px 40px 60px; }
+
+    .section-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 18px;
+    }
+
+    /* ── KPI GRID ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px; margin-bottom: 36px;
+    }
+    .kpi-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 22px 24px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover { border-color: rgba(77,139,255,0.30); box-shadow: 0 4px 24px rgba(77,139,255,0.08); }
+    .kpi-icon { font-size: 22px; margin-bottom: 12px; }
+    .kpi-label { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin-bottom: 6px; }
+    .kpi-value { font-size: 28px; font-weight: 700; color: #fff; line-height: 1; }
+    .kpi-unit { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .kpi-accent { border-color: rgba(62,201,122,0.25); }
+    .kpi-accent .kpi-value { color: var(--green); }
+
+    /* ── CHARTS ROW ── */
+    .charts-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 36px;
+    }
+    @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px;
+    }
+    .chart-card h3 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 20px; }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ── GAUGE ── */
+    .gauge-section { margin-bottom: 36px; }
+    .gauge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
+    .gauge-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+    }
+    .gauge-label { font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-align: center; }
+    .gauge-bar-wrap {
+      width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden;
+    }
+    .gauge-bar-fill {
+      height: 100%; border-radius: 99px; transition: width 0.8s cubic-bezier(0.22,1,0.36,1);
+    }
+    .gauge-val { font-size: 22px; font-weight: 700; }
+
+    /* ── EVENTS TABLE ── */
+    .table-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; overflow: hidden; margin-bottom: 36px;
+    }
+    .table-header { padding: 20px 24px; border-bottom: 1px solid var(--border); }
+    .table-header h3 { font-size: 14px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted);
+      padding: 12px 20px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 13px 20px; font-size: 13px; color: var(--text);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(77,139,255,0.04); }
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600;
+    }
+    .tag-green { background: rgba(62,201,122,0.15); color: var(--green); }
+    .tag-yellow { background: rgba(245,197,66,0.15); color: var(--yellow); }
+    .tag-red { background: rgba(255,107,107,0.15); color: var(--red); }
+
+    /* ── EMPTY STATE ── */
+    .empty { text-align: center; padding: 60px 24px; color: var(--muted); font-size: 14px; }
+
+    /* ── RESET BTN ── */
+    .reset-zone { text-align: right; }
+    .reset-btn-full {
+      padding: 10px 24px; border-radius: 10px;
+      background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.25);
+      color: var(--red); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .reset-btn-full:hover { background: rgba(255,107,107,0.16); }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="orb"></div>
+      <div>
+        <h1>ECO PROMPT</h1>
+        <span>Analytics Dashboard</span>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div class="live-dot" title="Auto-refreshing every 5s"></div>
+      <a href="http://localhost:5000" class="nav-link">← Chat App</a>
+      <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
+    </div>
+  </nav>
+
+  <div class="page">
+
+    <!-- KPI CARDS -->
+    <p class="section-title">Session Overview</p>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">🔍</div>
+        <div class="kpi-label">Total Prompts Cleaned</div>
+        <div class="kpi-value" id="kpi-requests">—</div>
+        <div class="kpi-unit">requests</div>
+      </div>
+      <div class="kpi-card kpi-accent">
+        <div class="kpi-icon">🪙</div>
+        <div class="kpi-label">Tokens Saved</div>
+        <div class="kpi-value" id="kpi-tokens">—</div>
+        <div class="kpi-unit">input tokens</div>
+      </div>
+      <div class="kpi-card kpi-accent">
+        <div class="kpi-icon">💵</div>
+        <div class="kpi-label">API Cost Saved</div>
+        <div class="kpi-value" id="kpi-cost">—</div>
+        <div class="kpi-unit">USD (Groq Llama pricing)</div>
+      </div>
+      <div class="kpi-card kpi-accent">
+        <div class="kpi-icon">⚡</div>
+        <div class="kpi-label">Energy Saved</div>
+        <div class="kpi-value" id="kpi-energy">—</div>
+        <div class="kpi-unit">Watt-hours</div>
+      </div>
+      <div class="kpi-card kpi-accent">
+        <div class="kpi-icon">🌿</div>
+        <div class="kpi-label">CO₂ Avoided</div>
+        <div class="kpi-value" id="kpi-co2">—</div>
+        <div class="kpi-unit">grams (US grid avg)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📉</div>
+        <div class="kpi-label">Avg Token Reduction</div>
+        <div class="kpi-value" id="kpi-reduction">—</div>
+        <div class="kpi-unit">% per prompt</div>
+      </div>
+    </div>
+
+    <!-- GAUGES -->
+    <div class="gauge-section">
+      <p class="section-title">Efficiency Gauges</p>
+      <div class="gauge-grid">
+        <div class="gauge-card">
+          <div class="gauge-label">Token Compression Rate</div>
+          <div class="gauge-val" id="gauge-reduction-val" style="color:var(--green)">0%</div>
+          <div class="gauge-bar-wrap">
+            <div class="gauge-bar-fill" id="gauge-reduction-bar" style="width:0%;background:var(--green)"></div>
+          </div>
+          <div class="gauge-label" style="font-size:10px">Higher = more filler removed per prompt</div>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-label">Energy Milestone</div>
+          <div class="gauge-val" id="gauge-energy-val" style="color:var(--blue)">0 Wh</div>
+          <div class="gauge-bar-wrap">
+            <div class="gauge-bar-fill" id="gauge-energy-bar" style="width:0%;background:var(--blue)"></div>
+          </div>
+          <div class="gauge-label" style="font-size:10px">Goal: 1 Wh saved (≈ 1,000,000 tokens cleaned)</div>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-label">CO₂ Milestone</div>
+          <div class="gauge-val" id="gauge-co2-val" style="color:var(--yellow)">0 g</div>
+          <div class="gauge-bar-wrap">
+            <div class="gauge-bar-fill" id="gauge-co2-bar" style="width:0%;background:var(--yellow)"></div>
+          </div>
+          <div class="gauge-label" style="font-size:10px">Goal: 0.4g CO₂ avoided</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <p class="section-title">Trends</p>
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Tokens: Raw vs Cleaned (last 20 prompts)</h3>
+        <div class="chart-wrap">
+          <canvas id="token-chart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>Reduction % per Prompt</h3>
+        <div class="chart-wrap">
+          <canvas id="reduction-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENT TABLE -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>Recent Cleaning Events</h3>
+      </div>
+      <div id="table-body-wrap">
+        <div class="empty" id="empty-state">No events yet — send some prompts in the chat app.</div>
+        <table id="events-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Time (UTC)</th>
+              <th>Raw Tokens</th>
+              <th>Clean Tokens</th>
+              <th>Saved</th>
+              <th>Reduction</th>
+              <th>Cost Saved (USD)</th>
+              <th>Energy Saved (Wh)</th>
+              <th>CO₂ (g)</th>
+            </tr>
+          </thead>
+          <tbody id="events-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RESET -->
+    <div class="reset-zone">
+      <button class="reset-btn-full" id="reset-btn">🗑 Reset All Analytics Data</button>
+    </div>
+
+  </div>
+
+  <script>
+    // ── Chart setup ───────────────────────────────────────────────────────────
+    const chartDefaults = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: 'rgba(234,234,234,0.5)', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: 'rgba(234,234,234,0.35)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: 'rgba(234,234,234,0.35)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      }
+    };
+
+    const tokenChart = new Chart(document.getElementById('token-chart'), {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Raw Tokens',   data: [], backgroundColor: 'rgba(255,107,107,0.55)', borderRadius: 5 },
+          { label: 'Clean Tokens', data: [], backgroundColor: 'rgba(62,201,122,0.55)',  borderRadius: 5 },
+        ]
+      },
+      options: { ...chartDefaults }
+    });
+
+    const reductionChart = new Chart(document.getElementById('reduction-chart'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Reduction %',
+          data: [],
+          borderColor: '#4D8BFF',
+          backgroundColor: 'rgba(77,139,255,0.10)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#4D8BFF',
+          pointRadius: 4,
+        }]
+      },
+      options: { ...chartDefaults }
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function fmtTime(iso) {
+      if (!iso) return '—';
+      return iso.replace('T', ' ').slice(0, 19);
+    }
+    function reductionTag(pct) {
+      if (pct >= 20) return `<span class="tag tag-green">${pct}%</span>`;
+      if (pct >= 5)  return `<span class="tag tag-yellow">${pct}%</span>`;
+      return `<span class="tag tag-red">${pct}%</span>`;
+    }
+
+    // ── Fetch and render ──────────────────────────────────────────────────────
+    async function fetchAndRender() {
+      let data;
+      try {
+        const r = await fetch('/metrics');
+        data = await r.json();
+        if (data.error) throw new Error(data.error);
+      } catch (e) {
+        return;
+      }
+
+      // KPIs
+      document.getElementById('kpi-requests').textContent  = data.total_requests.toLocaleString();
+      document.getElementById('kpi-tokens').textContent    = data.total_saved_tokens.toLocaleString();
+      document.getElementById('kpi-cost').textContent      = '$' + data.total_saved_cost_usd.toFixed(6);
+      document.getElementById('kpi-energy').textContent    = data.total_saved_energy_wh.toFixed(5);
+      document.getElementById('kpi-co2').textContent       = data.total_saved_co2_g.toFixed(5);
+      document.getElementById('kpi-reduction').textContent = data.avg_reduction_pct + '%';
+
+      // Gauges
+      const redPct = Math.min(100, data.avg_reduction_pct);
+      document.getElementById('gauge-reduction-val').textContent = data.avg_reduction_pct + '%';
+      document.getElementById('gauge-reduction-bar').style.width = redPct + '%';
+
+      const energyPct = Math.min(100, (data.total_saved_energy_wh / 1) * 100);
+      document.getElementById('gauge-energy-val').textContent = data.total_saved_energy_wh.toFixed(5) + ' Wh';
+      document.getElementById('gauge-energy-bar').style.width = energyPct + '%';
+
+      const co2Pct = Math.min(100, (data.total_saved_co2_g / 0.4) * 100);
+      document.getElementById('gauge-co2-val').textContent = data.total_saved_co2_g.toFixed(5) + ' g';
+      document.getElementById('gauge-co2-bar').style.width = co2Pct + '%';
+
+      // Charts — events come newest-first, reverse for chronological display
+      const events = [...(data.recent_events || [])].reverse();
+      const labels  = events.map((_, i) => `#${i + 1}`);
+      tokenChart.data.labels = labels;
+      tokenChart.data.datasets[0].data = events.map(e => e.raw_tokens);
+      tokenChart.data.datasets[1].data = events.map(e => e.clean_tokens);
+      tokenChart.update();
+
+      reductionChart.data.labels = labels;
+      reductionChart.data.datasets[0].data = events.map(e => e.reduction_pct);
+      reductionChart.update();
+
+      // Table
+      if (events.length === 0) {
+        document.getElementById('empty-state').style.display = 'block';
+        document.getElementById('events-table').style.display = 'none';
+      } else {
+        document.getElementById('empty-state').style.display = 'none';
+        document.getElementById('events-table').style.display = 'table';
+        const tbody = document.getElementById('events-tbody');
+        tbody.innerHTML = [...(data.recent_events || [])].map(e => `
+          <tr>
+            <td style="color:var(--muted);font-size:11px">${fmtTime(e.timestamp)}</td>
+            <td>${e.raw_tokens}</td>
+            <td>${e.clean_tokens}</td>
+            <td style="color:var(--green);font-weight:600">−${e.saved_tokens}</td>
+            <td>${reductionTag(e.reduction_pct)}</td>
+            <td style="font-size:12px">$${(e.saved_cost_usd||0).toFixed(7)}</td>
+            <td style="font-size:12px">${(e.saved_energy_wh||0).toFixed(6)} Wh</td>
+            <td style="font-size:12px">${(e.saved_co2_g||0).toFixed(6)} g</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // ── Reset ─────────────────────────────────────────────────────────────────
+    document.getElementById('reset-btn').addEventListener('click', async () => {
+      if (!confirm('Reset all analytics data? This cannot be undone.')) return;
+      await fetch('/reset', { method: 'POST' });
+      fetchAndRender();
+    });
+
+    document.getElementById('refresh-btn').addEventListener('click', fetchAndRender);
+
+    // ── Auto-refresh every 5 seconds ─────────────────────────────────────────
+    fetchAndRender();
+    setInterval(fetchAndRender, 5000);
+  </script>
+
+</body>
+</html>
