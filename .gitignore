@@ -1,1 +1,21 @@
+# Python virtual environment
+env/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables — NEVER commit this
 .env
+
+# VS Code settings
+.vscode/
+
+# Mac junk
+.DS_Store
+
+# Python packaging artifacts
+*.egg-info/
+dist/
+build/
