@@ -105,7 +105,7 @@ requests==2.32.3
 
 ## Method 1 — Run Without Docker
 
-Use this for development. Fastest to start, no Docker needed. You need 3 terminal windows open at the same time.
+Use this for development. Fastest to start, no Docker needed. You need 4 terminal windows open at the same time.
 
 ### Terminal 1 — Start the Cleaner Service
 
@@ -127,7 +127,17 @@ python analytics.py
 
 You should see: Running on http://127.0.0.1:5002
 
-### Terminal 3 — Start the Chat Service
+### Terminal 3 — Start the Aimodel Service
+
+```
+cd services/aimodel-service
+pip install -r requirements.txt
+python aimodel.py
+```
+
+You should see: Running on http://127.0.0.1:5003
+
+### Terminal 4 — Start the Chat Service
 
 ```
 cd services/chat-service
