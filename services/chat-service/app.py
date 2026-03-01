@@ -14,6 +14,7 @@ from flask import Flask, render_template, request, jsonify, session
 from groq import Groq
 from dotenv import load_dotenv
 import requests as http
+import re
 import os
 
 load_dotenv()
@@ -35,6 +36,43 @@ ANALYTICS_URL = os.getenv("ANALYTICS_URL", "http://localhost:5002")
 AIMODEL_URL   = os.getenv("AIMODEL_URL",   "http://localhost:5003")
 
 
+# ── Token metric helpers (mirrors cleaner_service logic) ──────────────────────
+
+def count_tokens(text: str) -> int:
+    words = len(re.findall(r"\S+", text))
+    return max(1, round(words / 0.75))
+
+def tokens_to_cost_usd(tokens: int) -> float:
+    return (tokens / 1_000_000) * 0.05
+
+def tokens_to_energy_wh(tokens: int) -> float:
+    return (tokens / 1_000) * 0.001
+
+def tokens_to_co2_g(energy_wh: float) -> float:
+    return energy_wh * 0.4
+
+def compute_metrics(original: str, final: str) -> dict:
+    """
+    Compute savings between the raw original query and the final
+    query sent to Groq (after cleaner + SLM). This captures the
+    total reduction across both pipeline steps.
+    """
+    raw_tokens   = count_tokens(original)
+    final_tokens = count_tokens(final)
+    saved_tokens = max(0, raw_tokens - final_tokens)
+    reduction_pct = round(saved_tokens / raw_tokens * 100, 1) if raw_tokens else 0
+    saved_energy  = tokens_to_energy_wh(saved_tokens)
+    return {
+        "raw_tokens":      raw_tokens,
+        "clean_tokens":    final_tokens,
+        "saved_tokens":    saved_tokens,
+        "reduction_pct":   reduction_pct,
+        "saved_cost_usd":  round(tokens_to_cost_usd(saved_tokens), 8),
+        "saved_energy_wh": round(saved_energy, 6),
+        "saved_co2_g":     round(tokens_to_co2_g(saved_energy), 6),
+    }
+
+
 # ── Service calls ─────────────────────────────────────────────────────────────
 
 def call_cleaner(text: str) -> dict:
@@ -43,7 +81,7 @@ def call_cleaner(text: str) -> dict:
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        approx = max(1, round(len(text.split()) / 0.75))
+        approx = count_tokens(text)
         return {
             "original": text, "cleaned": text,
             "raw_tokens": approx, "clean_tokens": approx,
@@ -54,7 +92,6 @@ def call_cleaner(text: str) -> dict:
 
 
 def call_aimodel(text: str) -> tuple[str, str | None]:
-    """Returns (result, error_or_None)"""
     try:
         r = http.post(f"{AIMODEL_URL}/infer", json={"text": text}, timeout=10)
         r.raise_for_status()
@@ -79,13 +116,12 @@ def index():
 
 @app.route("/api/debug")
 def debug():
-    """Hit this in your browser to see the current config."""
     return jsonify({
-        "model":        MODEL,
-        "groq_key_set": bool(GROQ_API_KEY),
-        "cleaner_url":  CLEANER_URL,
-        "aimodel_url":  AIMODEL_URL,
-        "analytics_url":ANALYTICS_URL,
+        "model":         MODEL,
+        "groq_key_set":  bool(GROQ_API_KEY),
+        "cleaner_url":   CLEANER_URL,
+        "aimodel_url":   AIMODEL_URL,
+        "analytics_url": ANALYTICS_URL,
     })
 
 
@@ -96,7 +132,7 @@ def clean():
     if not query:
         return jsonify({"error": "No query provided"}), 400
 
-    trace = {}   # collects debug info returned to frontend
+    trace = {}
 
     # ── Step 1: Rule-based NLP cleaner ───────────────────────────────────────
     clean_result = call_cleaner(query)
@@ -108,13 +144,13 @@ def clean():
     short_query, slm_error = call_aimodel(cleaned_text)
     if not short_query:
         short_query = cleaned_text
-        trace["step2_slm_used"] = False
+        trace["step2_slm_used"]  = False
         trace["step2_slm_error"] = slm_error
     else:
-        trace["step2_slm_used"]  = True
-        trace["step2_short"]     = short_query
+        trace["step2_slm_used"] = True
+        trace["step2_short"]    = short_query
 
-    # ── Step 3: Send shortened query to Groq ─────────────────────────────────
+    # ── Step 3: Send to Groq ──────────────────────────────────────────────────
     if "history" not in session:
         session["history"] = []
     session["history"].append({"role": "user", "content": short_query})
@@ -134,41 +170,31 @@ def clean():
         session["history"].append({"role": "assistant", "content": output})
         session.modified = True
 
+        # ── Combined metrics: raw original → final query sent to Groq ─────────
+        # This captures savings from BOTH the cleaner and the SLM together
+        metrics = compute_metrics(query, short_query)
+        trace["total_saved_tokens"] = metrics["saved_tokens"]
+        trace["total_reduction_pct"] = metrics["reduction_pct"]
+
         record_analytics({
-            "raw_tokens":      clean_result.get("raw_tokens",      0),
-            "clean_tokens":    clean_result.get("clean_tokens",    0),
-            "saved_tokens":    clean_result.get("saved_tokens",    0),
-            "reduction_pct":   clean_result.get("reduction_pct",   0),
-            "saved_cost_usd":  clean_result.get("saved_cost_usd",  0.0),
-            "saved_energy_wh": clean_result.get("saved_energy_wh", 0.0),
-            "saved_co2_g":     clean_result.get("saved_co2_g",     0.0),
-            "original_query":  query,
-            "cleaned_query":   cleaned_text,
-            "short_query":     short_query,
+            **metrics,
+            "original_query": query,
+            "cleaned_query":  cleaned_text,
+            "short_query":    short_query,
         })
 
         return jsonify({
             "output":      output,
             "cleaned":     cleaned_text,
             "short_query": short_query,
-            "metrics": {
-                "saved_tokens":    clean_result.get("saved_tokens",    0),
-                "reduction_pct":   clean_result.get("reduction_pct",   0),
-                "saved_cost_usd":  clean_result.get("saved_cost_usd",  0.0),
-                "saved_energy_wh": clean_result.get("saved_energy_wh", 0.0),
-                "saved_co2_g":     clean_result.get("saved_co2_g",     0.0),
-            },
-            "_trace": trace,   # debug info — remove in production
+            "metrics":     metrics,
+            "_trace":      trace,
         })
 
     except Exception as e:
         trace["step4_groq_ok"]    = False
         trace["step4_groq_error"] = str(e)
-        # Return the trace so the frontend can show exactly what failed
-        return jsonify({
-            "error":   str(e),
-            "_trace":  trace,
-        }), 500
+        return jsonify({"error": str(e), "_trace": trace}), 500
 
 
 @app.route("/api/new", methods=["POST"])

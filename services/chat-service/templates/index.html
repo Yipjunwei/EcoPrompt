@@ -563,8 +563,9 @@
 
         // ── Real metrics from cleaner service ──
         const m = data.metrics || {};
-        if (m.saved_tokens > 0 && data.cleaned && data.cleaned !== query) {
-          showCleanToast(query, data.cleaned, m);
+        const finalReduced = data.short_query || data.cleaned;
+        if (m.saved_tokens > 0 && finalReduced && finalReduced !== query) {
+          showCleanToast(query, finalReduced, m);
         }
         stats.savedTokens    = (stats.savedTokens    || 0) + (m.saved_tokens    || 0);
         stats.savedCostUsd   = (stats.savedCostUsd   || 0) + (m.saved_cost_usd  || 0);
