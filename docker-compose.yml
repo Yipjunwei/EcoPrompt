@@ -3,6 +3,7 @@
 # Services:
 #   cleaner    → port 5001  (NLP prompt cleaning)
 #   analytics  → port 5002  (metrics store + dashboard)
+#.  aimodel    → port 5003  (text shortener slm)
 #   chat       → port 5000  (main user-facing app)
 #
 # Usage:
@@ -42,6 +43,26 @@ services:
       retries: 5
       start_period: 15s
 
+  aimodel:
+    build: ./services/aimodel-service
+    container_name: eco-aimodel
+    ports:
+      - "5003:5003"
+    environment:
+      - AIMODEL_PORT=5003
+      - BASE_MODEL=t5-small
+      - LORA_PATH=/models/out_lora_t5_query_cleaner
+    volumes:
+      # Mount your trained LoRA adapter from project root
+      - ./slm-training/out_lora_t5_query_cleaner:/models/out_lora_t5_query_cleaner
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   chat:
     build: ./services/chat-service
     container_name: eco-chat
@@ -53,9 +74,12 @@ services:
       - CHAT_PORT=5000
       - CLEANER_URL=http://cleaner:5001
       - ANALYTICS_URL=http://analytics:5002
+      - AIMODEL_URL=http://aimodel:5003
     depends_on:
       cleaner:
         condition: service_healthy
       analytics:
+        condition: service_healthy
+      aimodel:
         condition: service_healthy
     restart: unless-stopped

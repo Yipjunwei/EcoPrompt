@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ECO Prompt</title>
@@ -487,7 +488,7 @@
         const img = document.createElement('img'); img.src = src; img.className = 'msg-img'; img.alt = '';
         bubble.appendChild(img);
       });
-      if (text) { const span = document.createElement('span'); span.textContent = text; bubble.appendChild(span); }
+      if (text) { const span = document.createElement('span'); span.innerHTML = marked.parse(text); bubble.appendChild(span); }
       const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = time || nowTime();
       col.appendChild(bubble); col.appendChild(t); row.appendChild(col);
       return row;

@@ -2,9 +2,10 @@
 Chat Service
 ------------
 Main user-facing Flask app. Orchestrates:
-  1. Cleaner Service  → clean the raw prompt
-  2. Groq LLM API    → get the AI response
-  3. Analytics Service → record the event
+  1. Cleaner Service   → rule-based NLP cleaning          (port 5001)
+  2. AI Model Service  → T5 LoRA query shortener           (port 5003)
+  3. Groq LLM API      → final AI response
+  4. Analytics Service → record the event                  (port 5002)
 
 Microservice boundary: port 5000.
 """
@@ -20,43 +21,72 @@ load_dotenv()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# ── Groq setup ────────────────────────────────────────────────────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY is not set — check your .env or Docker env_file")
+
+groq_client = Groq(api_key=GROQ_API_KEY)
 MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # Service URLs — override via env vars in Docker/K8s
 CLEANER_URL   = os.getenv("CLEANER_URL",   "http://localhost:5001")
 ANALYTICS_URL = os.getenv("ANALYTICS_URL", "http://localhost:5002")
+AIMODEL_URL   = os.getenv("AIMODEL_URL",   "http://localhost:5003")
 
+
+# ── Service calls ─────────────────────────────────────────────────────────────
 
 def call_cleaner(text: str) -> dict:
-    """Call the cleaner microservice. Falls back gracefully if unreachable."""
     try:
         r = http.post(f"{CLEANER_URL}/clean", json={"text": text}, timeout=5)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        print(f"[chat-service] Cleaner unreachable: {e}")
-        # Graceful degradation: pass raw prompt through unchanged
         approx = max(1, round(len(text.split()) / 0.75))
         return {
             "original": text, "cleaned": text,
             "raw_tokens": approx, "clean_tokens": approx,
             "saved_tokens": 0, "reduction_pct": 0,
             "saved_cost_usd": 0.0, "saved_energy_wh": 0.0, "saved_co2_g": 0.0,
+            "_cleaner_error": str(e),
         }
 
 
+def call_aimodel(text: str) -> tuple[str, str | None]:
+    """Returns (result, error_or_None)"""
+    try:
+        r = http.post(f"{AIMODEL_URL}/infer", json={"text": text}, timeout=10)
+        r.raise_for_status()
+        return r.json().get("query", ""), None
+    except Exception as e:
+        return "", str(e)
+
+
 def record_analytics(event: dict):
-    """Fire-and-forget to analytics service."""
     try:
         http.post(f"{ANALYTICS_URL}/event", json=event, timeout=3)
-    except Exception as e:
-        print(f"[chat-service] Analytics unreachable: {e}")
+    except Exception:
+        pass
 
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/debug")
+def debug():
+    """Hit this in your browser to see the current config."""
+    return jsonify({
+        "model":        MODEL,
+        "groq_key_set": bool(GROQ_API_KEY),
+        "cleaner_url":  CLEANER_URL,
+        "aimodel_url":  AIMODEL_URL,
+        "analytics_url":ANALYTICS_URL,
+    })
 
 
 @app.route("/api/clean", methods=["POST"])
@@ -66,61 +96,79 @@ def clean():
     if not query:
         return jsonify({"error": "No query provided"}), 400
 
-    # ── Step 1: Clean the prompt ──────────────────────────────────────────────
+    trace = {}   # collects debug info returned to frontend
+
+    # ── Step 1: Rule-based NLP cleaner ───────────────────────────────────────
     clean_result = call_cleaner(query)
     cleaned_text = clean_result["cleaned"]
+    trace["step1_cleaned"]       = cleaned_text
+    trace["step1_cleaner_error"] = clean_result.get("_cleaner_error")
 
-    # ── Step 2: Maintain conversation history (use CLEANED text) ─────────────
+    # ── Step 2: T5 LoRA SLM shortener ────────────────────────────────────────
+    short_query, slm_error = call_aimodel(cleaned_text)
+    if not short_query:
+        short_query = cleaned_text
+        trace["step2_slm_used"] = False
+        trace["step2_slm_error"] = slm_error
+    else:
+        trace["step2_slm_used"]  = True
+        trace["step2_short"]     = short_query
+
+    # ── Step 3: Send shortened query to Groq ─────────────────────────────────
     if "history" not in session:
         session["history"] = []
-    session["history"].append({"role": "user", "content": cleaned_text})
+    session["history"].append({"role": "user", "content": short_query})
     session.modified = True
 
-    # ── Step 3: Call LLM ─────────────────────────────────────────────────────
+    trace["step3_sent_to_groq"] = short_query
+    trace["step3_model"]        = MODEL
+
     try:
         response = groq_client.chat.completions.create(
             model=MODEL,
-            messages=session["history"]
+            messages=session["history"],
         )
         output = response.choices[0].message.content
-        usage  = response.usage  # actual token counts from Groq
+        trace["step4_groq_ok"] = True
 
         session["history"].append({"role": "assistant", "content": output})
         session.modified = True
 
-        # ── Step 4: Record analytics event ───────────────────────────────────
-        event = {
-            "raw_tokens":      clean_result["raw_tokens"],
-            "clean_tokens":    clean_result["clean_tokens"],
-            "saved_tokens":    clean_result["saved_tokens"],
-            "reduction_pct":   clean_result["reduction_pct"],
-            "saved_cost_usd":  clean_result["saved_cost_usd"],
-            "saved_energy_wh": clean_result["saved_energy_wh"],
-            "saved_co2_g":     clean_result["saved_co2_g"],
-            "llm_prompt_tokens":     getattr(usage, "prompt_tokens",     None),
-            "llm_completion_tokens": getattr(usage, "completion_tokens", None),
-        }
-        record_analytics(event)
+        record_analytics({
+            "raw_tokens":      clean_result.get("raw_tokens",      0),
+            "clean_tokens":    clean_result.get("clean_tokens",    0),
+            "saved_tokens":    clean_result.get("saved_tokens",    0),
+            "reduction_pct":   clean_result.get("reduction_pct",   0),
+            "saved_cost_usd":  clean_result.get("saved_cost_usd",  0.0),
+            "saved_energy_wh": clean_result.get("saved_energy_wh", 0.0),
+            "saved_co2_g":     clean_result.get("saved_co2_g",     0.0),
+            "original_query":  query,
+            "cleaned_query":   cleaned_text,
+            "short_query":     short_query,
+        })
 
         return jsonify({
-            "output":    output,
-            "query":     query,
-            "cleaned":   cleaned_text,
-            # Pass all metrics back to the frontend
+            "output":      output,
+            "cleaned":     cleaned_text,
+            "short_query": short_query,
             "metrics": {
-                "raw_tokens":      clean_result["raw_tokens"],
-                "clean_tokens":    clean_result["clean_tokens"],
-                "saved_tokens":    clean_result["saved_tokens"],
-                "reduction_pct":   clean_result["reduction_pct"],
-                "saved_cost_usd":  clean_result["saved_cost_usd"],
-                "saved_energy_wh": clean_result["saved_energy_wh"],
-                "saved_co2_g":     clean_result["saved_co2_g"],
-            }
+                "saved_tokens":    clean_result.get("saved_tokens",    0),
+                "reduction_pct":   clean_result.get("reduction_pct",   0),
+                "saved_cost_usd":  clean_result.get("saved_cost_usd",  0.0),
+                "saved_energy_wh": clean_result.get("saved_energy_wh", 0.0),
+                "saved_co2_g":     clean_result.get("saved_co2_g",     0.0),
+            },
+            "_trace": trace,   # debug info — remove in production
         })
 
     except Exception as e:
-        print(f"[chat-service] LLM error: {e}")
-        return jsonify({"error": str(e)}), 500
+        trace["step4_groq_ok"]    = False
+        trace["step4_groq_error"] = str(e)
+        # Return the trace so the frontend can show exactly what failed
+        return jsonify({
+            "error":   str(e),
+            "_trace":  trace,
+        }), 500
 
 
 @app.route("/api/new", methods=["POST"])
@@ -131,7 +179,6 @@ def new_conversation():
 
 @app.route("/api/metrics")
 def proxy_metrics():
-    """Proxy to analytics service so the chat frontend can poll it."""
     try:
         r = http.get(f"{ANALYTICS_URL}/metrics", timeout=5)
         return jsonify(r.json())
