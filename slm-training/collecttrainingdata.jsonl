@@ -1,1 +1,15 @@
 {"input": "what is the best iphone model till data", "output": "best iphone model till data"}
+{"input": "what is the difference between tcp and udp?", "output": "what is the difference between tcp and udp?"}
+{"input": "what is a chocolate?", "output": "what is a chocolate?"}
+{"input": "I hate chocolate. I dont like chocolate. Why is chocolate black?", "output": "i hate chocolate. i dont like chocolate. why is chocolate black?"}
+{"input": "cat slm-training/collecttrainingdata.jsonl", "output": "cat slm-training/collecttrainingdata.jsonl"}
+{"input": "What is the chocolate name?", "output": "chocolate name"}
+{"input": "hello", "output": "hello"}
+{"input": "What is the difference between TCP and UDP?", "output": "what is the difference between tcp and udp?"}
+{"input": "when is the release date of GTA 6? thank you", "output": "when is the release date of gta 6? thank you"}
+{"input": "what is the chocolate colour?", "output": "what is the chocolate colour?"}
+{"input": "why do we have to eat?", "output": "why do we have to eat?"}
+{"input": "curl -X POST http://localhost:5001/clean \\", "output": "curl -x post"}
+{"input": "-H \"Content-Type: application/json\" \\", "output": "-h \"content-type: application/json\" \\"}
+{"input": "-d '{\"text\": \"What is the difference between TCP and UDP?\"}'curl -X POST http://localhost:5001/clean \\", "output": "-d '{\"text\": \"what is the difference between tcp and udp?\"}'curl -x post http://localhost:5001/clean \\"}
+{"input": "-H \"Content-Type: application/json\" \\", "output": "-h \"content-type: application/json\" \\"}

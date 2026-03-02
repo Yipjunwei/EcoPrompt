@@ -45,15 +45,16 @@ def run(tok, model, text: str) -> str:
     # Pass-through if input is too short
     if len(cleaned_input.split()) < 3 or len(cleaned_input) < 5:
         return cleaned_input
+    
 
     prompt = PROMPT_HEAD + cleaned_input
     inputs = tok(prompt, return_tensors="pt", truncation=True, max_length=256).to("cpu")
-    bad_words = ["rewrite", "query", "search", "intent", "st", "s"]
+    bad_words = ["rewrite", "query", "search", "intent"]
     bad_words_ids = [tok(x, add_special_tokens=False).input_ids for x in bad_words]
     bad_words_ids = [ids for ids in bad_words_ids if len(ids) > 0]
     out = model.generate(
         **inputs,
-        max_new_tokens=32,
+        max_new_tokens=64,
         do_sample=False,
         num_beams=4,
         repetition_penalty=1.2,
@@ -62,6 +63,10 @@ def run(tok, model, text: str) -> str:
     )
     decoded = tok.decode(out[0], skip_special_tokens=True)
     cleaned = post_clean(decoded)
+
+    # Fallback: if output is less than 40% of input length, it over-compressed
+    if len(cleaned.split()) < len(cleaned_input.split()) * 0.4:
+        return cleaned_input
     return cleaned
     
 if __name__ == "__main__":

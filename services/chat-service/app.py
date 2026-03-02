@@ -95,7 +95,15 @@ def call_aimodel(text: str) -> tuple[str, str | None]:
     try:
         r = http.post(f"{AIMODEL_URL}/infer", json={"text": text}, timeout=10)
         r.raise_for_status()
-        return r.json().get("query", ""), None
+        result = r.json().get("query", "")
+
+        # Fallback: if output is less than 40% of input length, it over-compressed
+        input_words = len(text.split())
+        output_words = len(result.split())
+        if input_words > 3 and output_words < input_words * 0.4:
+            return text, None
+
+        return result, None
     except Exception as e:
         return "", str(e)
 

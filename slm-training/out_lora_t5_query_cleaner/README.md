@@ -1,6 +1,10 @@
 ---
 base_model: t5-small
 library_name: peft
+tags:
+- base_model:adapter:t5-small
+- lora
+- transformers
 ---
 
 # Model Card for Model ID
@@ -199,4 +203,5 @@ Carbon emissions can be estimated using the [Machine Learning Impact calculator]
 [More Information Needed]
 ### Framework versions
 
+- PEFT 0.18.1
 - PEFT 0.11.1

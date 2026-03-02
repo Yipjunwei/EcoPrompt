@@ -1,5 +1,9 @@
 {
-  "additional_special_tokens": [
+  "backend": "tokenizers",
+  "clean_up_tokenization_spaces": true,
+  "eos_token": "</s>",
+  "extra_ids": 100,
+  "extra_special_tokens": [
     "<extra_id_0>",
     "<extra_id_1>",
     "<extra_id_2>",
@@ -101,25 +105,9 @@
     "<extra_id_98>",
     "<extra_id_99>"
   ],
-  "eos_token": {
-    "content": "</s>",
-    "lstrip": false,
-    "normalized": false,
-    "rstrip": false,
-    "single_word": false
-  },
-  "pad_token": {
-    "content": "<pad>",
-    "lstrip": false,
-    "normalized": false,
-    "rstrip": false,
-    "single_word": false
-  },
-  "unk_token": {
-    "content": "<unk>",
-    "lstrip": false,
-    "normalized": false,
-    "rstrip": false,
-    "single_word": false
-  }
+  "is_local": false,
+  "model_max_length": 512,
+  "pad_token": "<pad>",
+  "tokenizer_class": "T5Tokenizer",
+  "unk_token": "<unk>"
 }

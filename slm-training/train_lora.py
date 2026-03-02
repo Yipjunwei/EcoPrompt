@@ -129,11 +129,11 @@ def main():
     per_device_train_batch_size=8,
     per_device_eval_batch_size=8,
     gradient_accumulation_steps=2,
-    learning_rate=1e-4,     
-    num_train_epochs=2,     
-    weight_decay=0.01,      
+    learning_rate=1e-4,
+    num_train_epochs=2,
+    weight_decay=0.01,
     logging_steps=50,
-    evaluation_strategy="steps",
+    eval_strategy="steps",        # ← was evaluation_strategy
     eval_steps=500,
     save_steps=500,
     save_total_limit=2,
@@ -153,7 +153,7 @@ def main():
         args=args,
         train_dataset=ds_tok["train"],
         eval_dataset=ds_tok["validation"],
-        tokenizer=tok,
+        processing_class=tok,
         data_collator=data_collator,
     )
 
