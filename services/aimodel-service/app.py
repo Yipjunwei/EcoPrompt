@@ -19,7 +19,7 @@ app = Flask(__name__)
 
 BASE_MODEL = os.environ.get("BASE_MODEL", "t5-small")
 # IMPORTANT: point to a checkpoint folder, not the OUT_DIR root
-LORA_PATH = os.environ.get("LORA_PATH", "/models/out_lora_t5_query_cleaner")
+LORA_PATH = os.environ.get("LORA_PATH", "../../slm-training/out_lora_t5_query_cleaner")
 PORT = int(os.environ.get("AIMODEL_PORT", "5003"))
 
 MAX_SOURCE_LEN = int(os.environ.get("MAX_SOURCE_LEN", "256"))

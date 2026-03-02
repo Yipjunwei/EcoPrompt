@@ -132,7 +132,7 @@ You should see: Running on http://127.0.0.1:5002
 ```
 cd services/aimodel-service
 pip install -r requirements.txt
-python aimodel.py
+python app.py
 ```
 
 You should see: Running on http://127.0.0.1:5003
