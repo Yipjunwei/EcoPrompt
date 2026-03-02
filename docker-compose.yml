@@ -3,14 +3,36 @@
 # Services:
 #   cleaner    → port 5001  (NLP prompt cleaning)
 #   analytics  → port 5002  (metrics store + dashboard)
-#.  aimodel    → port 5003  (text shortener slm)
+#   aimodel    → port 5003  (text shortener SLM)
 #   chat       → port 5000  (main user-facing app)
+#   postgres   → port 5432  (analytics DB)
 #
 # Usage:
-#   1. Copy .env.example to .env and fill in your GROQ_API_KEY
+#   1. Copy .env.example to .env and fill in your GROQ_API_KEY (and Postgres vars)
 #   2. docker compose up --build
 
 services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: eco-postgres
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-eco}
+      - POSTGRES_USER=${POSTGRES_USER:-eco}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"   
+    volumes:
+      - eco_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eco} -d ${POSTGRES_DB:-eco}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   cleaner:
     build: ./services/cleaner-service
@@ -21,7 +43,6 @@ services:
       - CLEANER_PORT=5001
     restart: unless-stopped
     healthcheck:
-      # Use python instead of curl — curl is not installed in python:slim images
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
       interval: 10s
       timeout: 5s
@@ -33,15 +54,21 @@ services:
     container_name: eco-analytics
     ports:
       - "5002:5002"
+    env_file:
+      - .env
     environment:
       - ANALYTICS_PORT=5002
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
 
   aimodel:
     build: ./services/aimodel-service
@@ -53,7 +80,6 @@ services:
       - BASE_MODEL=t5-small
       - LORA_PATH=/models/out_lora_t5_query_cleaner
     volumes:
-      # Mount your trained LoRA adapter from project root
       - ./slm-training/out_lora_t5_query_cleaner:/models/out_lora_t5_query_cleaner
     restart: unless-stopped
     healthcheck:
@@ -83,3 +109,6 @@ services:
       aimodel:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  eco_pgdata:

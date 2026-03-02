@@ -643,18 +643,23 @@
     }
 
     /* ── drawer stats ── */
-    function updateDrawer() {
-      const t = stats.savedTokens;
-      document.getElementById('energy-value').textContent = t.toLocaleString();
-      document.getElementById('wh-value').textContent     = stats.savedEnergyWh.toFixed(6) + ' Wh';
-      document.getElementById('cost-value').textContent   = '$' + stats.savedCostUsd.toFixed(7);
-      document.getElementById('co2-value').textContent    = stats.savedCo2G.toFixed(6) + ' g';
-      document.getElementById('query-count').textContent  = stats.queries;
-      document.getElementById('avg-tokens').textContent   = (stats.queries > 0 ? Math.round(t / stats.queries) : 0) + ' / query';
-      document.getElementById('energy-bar').style.width   = Math.min(100, (t / 10000) * 100) + '%';
-      const badge = document.getElementById('ham-badge');
-      if (t > 0) { badge.style.display='flex'; document.getElementById('badge-val').textContent = t>999?(t/1000).toFixed(1)+'k':t; }
-      else badge.style.display='none';
+    async function updateDrawer() {
+      try {
+        const r = await fetch('/api/metrics');
+        const d = await r.json();
+        const t = d.total_saved_tokens || 0;
+        document.getElementById('energy-value').textContent = t.toLocaleString();
+        document.getElementById('wh-value').textContent     = (d.total_saved_energy_wh || 0).toFixed(6) + ' Wh';
+        document.getElementById('cost-value').textContent   = '$' + (d.total_saved_cost_usd || 0).toFixed(7);
+        document.getElementById('co2-value').textContent    = (d.total_saved_co2_g || 0).toFixed(6) + ' g';
+        document.getElementById('query-count').textContent  = d.total_requests || 0;
+        const avg = d.total_requests > 0 ? Math.round(t / d.total_requests) : 0;
+        document.getElementById('avg-tokens').textContent   = avg + ' / query';
+        document.getElementById('energy-bar').style.width   = Math.min(100, (t / 10000) * 100) + '%';
+        const badge = document.getElementById('ham-badge');
+        if (t > 0) { badge.style.display='flex'; document.getElementById('badge-val').textContent = t>999?(t/1000).toFixed(1)+'k':t; }
+        else badge.style.display='none';
+      } catch(e) { console.warn('metrics fetch failed', e); }
     }
 
     /* ── toast: show original vs cleaned prompt ── */
@@ -706,8 +711,12 @@
     hamburgerBtn.addEventListener('click', () => drawer.classList.contains('open') ? closeDrawer() : openDrawer());
     drawerClose.addEventListener('click', closeDrawer);
     overlay.addEventListener('click', closeDrawer);
-    resetBtn.addEventListener('click', () => { stats={saved:0,queries:0,savedTokens:0,savedCostUsd:0,savedEnergyWh:0,savedCo2G:0}; updateDrawer(); });
-  </script>
+    resetBtn.addEventListener('click', async () => {
+      await fetch('http://localhost:5002/reset', { method: 'POST' });
+      updateDrawer();
+});
+updateDrawer();
+</script>
 
 </body>
 </html>
