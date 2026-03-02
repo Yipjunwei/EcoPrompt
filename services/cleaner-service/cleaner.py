@@ -77,6 +77,7 @@ def clean_prompt(text: str) -> dict:
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)                     # collapse spaces
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)                     # max 2 consecutive newlines
 
+
     # Step 2: Remove redundant openers (case-insensitive)
     for pattern in REDUNDANT_OPENERS:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
@@ -100,6 +101,8 @@ def clean_prompt(text: str) -> dict:
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     cleaned = re.sub(r"\s([,;:.!?])", r"\1", cleaned)
     cleaned = re.sub(r"^[,;:\s]+", "", cleaned)
+    cleaned = re.sub(r"[,;:]\s*!", "!", cleaned)  
+    cleaned = re.sub(r"[,;:]\s*\?", "?", cleaned)
     cleaned = cleaned.strip()
 
     # Step 6: Compute metrics
