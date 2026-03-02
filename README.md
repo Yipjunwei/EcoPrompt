@@ -31,23 +31,34 @@ eco-prompt/
 ├── .env                          <- YOU create this (see setup below)
 ├── .env.example                  <- template, do not edit
 ├── README.md
-└── services/
-    ├── chat-service/
-    │   ├── Dockerfile
-    │   ├── requirements.txt
-    │   ├── app.py
-    │   └── templates/
-    │       └── index.html
-    ├── cleaner-service/
-    │   ├── Dockerfile
-    │   ├── requirements.txt
-    │   └── cleaner.py
-    └── analytics-service/
-        ├── Dockerfile
-        ├── requirements.txt
-        ├── analytics.py
-        └── templates/
-            └── dashboard.html
+├── services/
+│   ├── chat-service/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── app.py
+│   │   └── templates/
+│   │       └── index.html
+│   ├── cleaner-service/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   └── app.py
+│   ├── analytics-service/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── app.py
+│   │   └── templates/
+│   │       └── dashboard.html
+│   └── aimodel-service/
+│       ├── Dockerfile
+│       ├── requirements.txt
+│       └── app.py
+└── slm-training/
+    ├── train_lora.py
+    ├── test.py
+    ├── data/
+    │   ├── train.jsonl
+    │   └── val.jsonl
+    └── out_lora_t5_query_cleaner/   <- trained LoRA adapter (mounted into Docker)
 ```
 
 > Common mistake: index.html must be inside chat-service/templates/ and dashboard.html must be inside analytics-service/templates/. If they are in a root-level templates/ folder, move them now.
@@ -81,6 +92,10 @@ In the root eco-prompt/ folder, create a file named .env (no extension) with thi
 GROQ_API_KEY=gsk_your_actual_key_here
 SECRET_KEY=any-random-string-like-mysecret123
 GROQ_MODEL=llama-3.1-8b-instant
+
+POSTGRES_DB=eco
+POSTGRES_USER=eco
+POSTGRES_PASSWORD=change-to-a-password
 ```
 
 Never commit this file to Git. It is already in .gitignore. Each teammate creates their own .env with their own Groq key.
@@ -195,6 +210,7 @@ Wait until you see all three of these lines appear:
 ```
 eco-cleaner    | * Running on http://0.0.0.0:5001
 eco-analytics  | * Running on http://0.0.0.0:5002
+eco-aimodel    | * Running on http://0.0.0.1:5003
 eco-chat       | * Running on http://0.0.0.0:5000
 ```
 
@@ -248,6 +264,7 @@ docker login
 
 docker build -t YOUR_USERNAME/eco-cleaner:latest   ./services/cleaner-service
 docker build -t YOUR_USERNAME/eco-analytics:latest ./services/analytics-service
+docker build -t YOUR_USERNAME/eco-aimodel:latest   ./services/aimodel-service
 docker build -t YOUR_USERNAME/eco-chat:latest      ./services/chat-service
 ```
 
@@ -256,6 +273,7 @@ docker build -t YOUR_USERNAME/eco-chat:latest      ./services/chat-service
 ```
 docker push YOUR_USERNAME/eco-cleaner:latest
 docker push YOUR_USERNAME/eco-analytics:latest
+docker push YOUR_USERNAME/eco-aimodel:latest
 docker push YOUR_USERNAME/eco-chat:latest
 ```
 
@@ -456,6 +474,33 @@ Or change the left number in the port mapping in docker-compose.yml (e.g. 5010:5
 
 ---
 
+**eco-aimodel unhealthy / LoraConfig unexpected keyword argument**
+
+PEFT version mismatch. Clean the adapter config:
+```
+python3 -c "
+import json
+path = 'slm-training/out_lora_t5_query_cleaner/adapter_config.json'
+with open(path) as f:
+    cfg = json.load(f)
+safe = {
+    'peft_type': cfg.get('peft_type', 'LORA'),
+    'task_type': cfg.get('task_type', 'SEQ_2_SEQ_LM'),
+    'r': cfg.get('r', 8),
+    'lora_alpha': cfg.get('lora_alpha', 16),
+    'lora_dropout': cfg.get('lora_dropout', 0.05),
+    'bias': cfg.get('bias', 'none'),
+    'target_modules': cfg.get('target_modules', ['q', 'v']),
+    'base_model_name_or_path': cfg.get('base_model_name_or_path', 't5-small'),
+    'inference_mode': True,
+}
+with open(path, 'w') as f:
+    json.dump(safe, f, indent=2)
+print('Done')
+"
+```
+
+
 **401 Unauthorized from Groq**
 
 Your API key is wrong or missing. Check:
@@ -559,7 +604,7 @@ env:
 
 Recommended migration path:
 1. Push images to Docker Hub or a private registry like AWS ECR or GCP Artifact Registry
-2. Write Deployment and ClusterIP Service YAML for each of the 3 services
+2. Write Deployment and ClusterIP Service YAML for each of the services
 3. Store GROQ_API_KEY in a K8s Secret — never hardcode secrets in YAML files
 4. Expose chat-service externally via a LoadBalancer or Ingress
-5. Replace in-memory analytics store with Redis or Postgres for persistence across pod restarts
+5. Replace containerised Postgres with managed DB (AWS RDS, GCP Cloud SQL)
