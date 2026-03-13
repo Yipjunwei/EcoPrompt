@@ -9,6 +9,9 @@ __pycache__/
 # Environment variables — NEVER commit this
 .env
 
+# Kubernetes secrets — NEVER commit this (use k8s/secret.example.yaml as template)
+k8s/secret.yaml
+
 # VS Code settings
 .vscode/
 
