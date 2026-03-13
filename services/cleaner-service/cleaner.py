@@ -26,11 +26,14 @@ enc = tiktoken.get_encoding("cl100k_base")
 # ── Filler phrase list (expandable) ──────────────────────────────────────────
 FILLER_PHRASES = [
     # ── Greeting follow-ups ───────────────────────────────────────────────────
-    r"\bi hope (?:you'?re?|you are) doing (?:well|good|okay)\b[,.]?\s*",
+    # Broadened to cover "having a wonderful day" etc., not just "doing well"
+    r"\bi hope (?:you'?re?|you are) (?:doing (?:well|good|okay)|having a \w+ (?:day|morning|evening|week|time))\b[,.]?\s*",
 
     # ── Full compound "wondering if" sentences ────────────────────────────────
     r"\bi (?:just )?was wondering if you (?:would|could)(?: be able to)? (?:help me out|help|assist)\b[^.?!]*[.!]?\s*",
     r"\byou would be able to help (?:me )?out\b[^.?!]*[.!]?\s*",
+    # Fix: consume the full polite request clause including embedded "if it's not too much trouble"
+    r"(?:(?:and|,)\s+)?i (?:just )?was wondering if you (?:would|could)(?: (?:just|potentially|perhaps|maybe))?\s*(?:,\s*if (?:it(?:'s| is)|that(?:'s| is)) not too much trouble\s*,\s*)?",
 
     # ── Politeness / request openers ─────────────────────────────────────────
     r"\bcan you please\b", r"\bcould you please\b", r"\bplease kindly\b",
@@ -41,7 +44,12 @@ FILLER_PHRASES = [
     # ── Filler words ──────────────────────────────────────────────────────────
     r"\bjust\b(?=\s)", r"\bbasically\b", r"\bactually\b", r"\bliterally\b",
     r"\bkind of\b", r"\bsort of\b", r"\byou know\b", r"\bhonestly\b",
-    r",?\s*\blike\b\s*,(?=\s+[a-z])", r"\blike\b(?=\s+[a-z])",
+    # Fix: only remove "like" when comma-surrounded (discourse filler), not as preposition
+    r"(?:,\s*like\s*,?|(?<=[a-z]{2}),\s*like\b)",
+
+    # ── Idle context phrases — must run AFTER filler words (just/actually) are stripped ──
+    # Use \s+ to tolerate extra spaces left by earlier removals
+    r"\bi was\s+(?:just\s+)?(?:sitting|standing|lying)\s+(?:here|there)\s+(?:thinking|wondering)\b[^.!?]*?(?:\band\b\s*)?",
 
     # ── Politeness closers ────────────────────────────────────────────────────
     r"\bif you don't mind\b", r"\bif that's okay\b",
@@ -52,7 +60,10 @@ FILLER_PHRASES = [
 
     # ── Filler closers / hedges ───────────────────────────────────────────────
     r"\bas soon as possible\b", r"\bquickly\b(?=\s)",
-    r"\bum\b", r"\buh\b", r"\bhmm+\b", r"\bso\b\s*,?\s*(?=\s*[a-z])",
+    # Note: \bum\b removed from here — handled in pre-pass before opener detection (see clean_prompt)
+    r"\buh\b", r"\bhmm+\b",
+    # Fix: only strip "so" at sentence/clause boundaries, not mid-sentence (e.g. "so so much")
+    r"(?:(?<=\. )|(?<=! )|(?<=\? )|^)so\b,?\s*",
     r"\bi hope you can help\b", r"\b(?:i\s+)?hope (?:this|that) makes sense\b",
     r"\bdoes that make sense\b",
     r"\blet me know if you need more\b[^.!?]*",
@@ -151,6 +162,10 @@ def clean_prompt(text: str) -> dict:
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)                     # collapse spaces
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)                     # max 2 consecutive newlines
 
+
+    # Step 1b: Strip leading filler interjections (um/uh/hmm) BEFORE opener detection
+    # so that "Um, hello there!" → "hello there!" → caught by REDUNDANT_OPENERS
+    cleaned = re.sub(r"^(?:um|uh|hmm+)[,!\s]+", "", cleaned, flags=re.IGNORECASE).strip()
 
     # Step 2: Remove redundant openers (case-insensitive)
     for pattern in REDUNDANT_OPENERS:
