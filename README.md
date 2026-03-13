@@ -11,13 +11,13 @@
 2. [Prerequisites & Setup](#prerequisites--setup)
 3. [Method 1 — Run Without Docker](#method-1--run-without-docker)
 4. [Method 2 — Run With Docker Compose](#method-2--run-with-docker-compose)
-5. [Sharing Images With Teammates](#sharing-images-with-teammates)
-6. [Test Prompts — See the Savings](#test-prompts--see-the-savings)
-7. [Useful Docker Commands](#useful-docker-commands)
-8. [Troubleshooting](#troubleshooting)
-9. [How Prompt Cleaning Works](#how-prompt-cleaning-works)
-10. [Architecture](#architecture)
-11. [Kubernetes — Future Deployment](#kubernetes--future-deployment)
+5. [Method 3 — Kubernetes Deployment](#method-3--kubernetes-deployment)
+6. [Sharing Images With Teammates](#sharing-images-with-teammates)
+7. [Test Prompts — See the Savings](#test-prompts--see-the-savings)
+8. [Useful Docker Commands](#useful-docker-commands)
+9. [Troubleshooting](#troubleshooting)
+10. [How Prompt Cleaning Works](#how-prompt-cleaning-works)
+11. [Architecture](#architecture)
 
 ---
 
@@ -31,6 +31,11 @@ eco-prompt/
 ├── .env                          <- YOU create this (see setup below)
 ├── .env.example                  <- template, do not edit
 ├── README.md
+├── scripts/
+│   ├── deploy.sh                 <- Linux/macOS k8s deploy script
+│   ├── deploy.ps1                <- Windows k8s deploy script
+│   └── test_all.py               <- end-to-end integration tests
+├── k8s/                          <- Kubernetes manifests
 ├── services/
 │   ├── chat-service/
 │   │   ├── Dockerfile
@@ -41,11 +46,11 @@ eco-prompt/
 │   ├── cleaner-service/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   └── app.py
+│   │   └── cleaner.py
 │   ├── analytics-service/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   ├── app.py
+│   │   ├── analytics.py
 │   │   └── templates/
 │   │       └── dashboard.html
 │   └── aimodel-service/
@@ -71,18 +76,9 @@ eco-prompt/
 
 Download from https://www.python.org/downloads/ and install.
 
-Verify in your terminal:
-```
-python --version
-```
-Expected: Python 3.11.x or higher
-
 ### 2. Get a free Groq API key
 
-1. Go to https://console.groq.com
-2. Sign up (no credit card needed)
-3. Click API Keys then Create API Key
-4. Copy the key — it starts with gsk_
+Go to https://console.groq.com, sign up (no credit card needed), and create an API key. It starts with `gsk_`.
 
 ### 3. Create your .env file
 
@@ -102,18 +98,9 @@ Never commit this file to Git. It is already in .gitignore. Each teammate create
 
 ### 4. Fix the httpx version (important for Windows)
 
-If you get a TypeError about 'proxies', run this:
+If you get a TypeError about 'proxies', run:
 ```
 pip install httpx==0.27.2
-```
-
-And make sure services/chat-service/requirements.txt contains exactly:
-```
-flask==3.0.3
-groq==0.9.0
-httpx==0.27.2
-python-dotenv==1.0.1
-requests==2.32.3
 ```
 
 ---
@@ -130,8 +117,6 @@ pip install -r requirements.txt
 python cleaner.py
 ```
 
-You should see: Running on http://127.0.0.1:5001
-
 ### Terminal 2 — Start the Analytics Service
 
 ```
@@ -139,8 +124,6 @@ cd services/analytics-service
 pip install -r requirements.txt
 python analytics.py
 ```
-
-You should see: Running on http://127.0.0.1:5002
 
 ### Terminal 3 — Start the Aimodel Service
 
@@ -150,8 +133,6 @@ pip install -r requirements.txt
 python app.py
 ```
 
-You should see: Running on http://127.0.0.1:5003
-
 ### Terminal 4 — Start the Chat Service
 
 ```
@@ -160,22 +141,17 @@ pip install -r requirements.txt
 python app.py
 ```
 
-You should see: Running on http://127.0.0.1:5000
-
-### Open the app
-
-- Chat app:           http://localhost:5000
+Open the app:
+- Chat app: http://localhost:5000
 - Analytics dashboard: http://localhost:5002/dashboard
 
-### Stop the app
-
-Press Ctrl + C in each terminal window.
+Press Ctrl + C in each terminal to stop.
 
 ---
 
 ## Method 2 — Run With Docker Compose
 
-Use this to share with teammates or simulate production. One command starts all 3 services. Requires Docker Desktop.
+Use this to share with teammates or simulate production. Requires Docker Desktop.
 
 ### Install Docker Desktop
 
@@ -185,28 +161,13 @@ Download from https://www.docker.com/products/docker-desktop and install.
 - Mac M1/M2/M3: Works natively, no extra steps
 - Linux: Follow https://docs.docker.com/engine/install/
 
-Verify Docker is installed:
-```
-docker --version
-docker compose version
-```
-Both should return a version number. If not, revisit the install guide.
-
 ### First run — build and start everything
-
-Make sure your .env file exists in the root folder, then run from the eco-prompt/ root:
 
 ```
 docker compose up --build
 ```
 
-This will:
-- Download the Python base image from Docker Hub (first time only, takes 1-2 minutes)
-- Build all 3 service containers from your source code
-- Start them in order: cleaner first, then analytics, then chat
-- Show combined live logs from all 3 in your terminal
-
-Wait until you see all three of these lines appear:
+Wait until you see all four lines appear:
 ```
 eco-cleaner    | * Running on http://0.0.0.0:5001
 eco-analytics  | * Running on http://0.0.0.0:5002
@@ -214,14 +175,13 @@ eco-aimodel    | * Running on http://0.0.0.1:5003
 eco-chat       | * Running on http://0.0.0.0:5000
 ```
 
-### Open the app
-
-- Chat app:            http://localhost:5000
+Open the app:
+- Chat app: http://localhost:5000
 - Analytics dashboard: http://localhost:5002/dashboard
 
 ### Stop the app
 
-Press Ctrl + C in the terminal, then:
+Press Ctrl + C, then:
 ```
 docker compose down
 ```
@@ -236,28 +196,56 @@ docker compose up
 
 ```
 docker compose up -d
+docker compose logs -f   # watch logs
+docker compose down      # stop
+```
 
-# Check everything started correctly
-docker compose ps
+---
 
-# Watch live logs
-docker compose logs -f
+## Method 3 — Kubernetes Deployment
 
-# Stop when done
-docker compose down
+Manifests live in `k8s/`. Deploy scripts live in `scripts/`. Requires Docker Desktop with Kubernetes enabled (or minikube/kind).
+
+### Deploy (one command)
+
+Make sure your `.env` file is filled in, then run:
+
+```bash
+# Linux / macOS
+./scripts/deploy.sh
+
+# Windows (PowerShell)
+./scripts/deploy.ps1
+```
+
+This builds all 4 images, injects secrets from your `.env`, and applies all k8s manifests. `secret.yaml` is restored to its placeholder state afterwards so it stays safe to commit.
+
+Verify everything is running:
+```
+kubectl get all -n ecoprompt
+```
+
+### Access the app
+
+```
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+```
+
+Open `http://<EXTERNAL-IP>/` for the chat app and `http://<EXTERNAL-IP>/dashboard` for analytics.
+
+### Tear down
+
+```
+kubectl delete namespace ecoprompt
 ```
 
 ---
 
 ## Sharing Images With Teammates
 
-Push your built images to Docker Hub so teammates can run the app with zero setup — no Python, no source code, just Docker and their own .env file.
+Push your built images to Docker Hub so teammates can run the app without cloning the repo.
 
-### Step 1 — Create a free Docker Hub account
-
-Go to https://hub.docker.com and sign up. Your username becomes part of the image name (e.g. johndoe/eco-chat).
-
-### Step 2 — Log in and build
+### Step 1 — Log in and build
 
 ```
 docker login
@@ -268,7 +256,7 @@ docker build -t YOUR_USERNAME/eco-aimodel:latest   ./services/aimodel-service
 docker build -t YOUR_USERNAME/eco-chat:latest      ./services/chat-service
 ```
 
-### Step 3 — Push to Docker Hub
+### Step 2 — Push to Docker Hub
 
 ```
 docker push YOUR_USERNAME/eco-cleaner:latest
@@ -277,7 +265,7 @@ docker push YOUR_USERNAME/eco-aimodel:latest
 docker push YOUR_USERNAME/eco-chat:latest
 ```
 
-### Step 4 — Teammates pull and run
+### Step 3 — Teammates pull and run
 
 Teammates edit docker-compose.yml to use your images instead of building locally. Change each service from:
 
@@ -295,7 +283,7 @@ services:
     image: YOUR_USERNAME/eco-cleaner:latest
 ```
 
-Do the same for analytics and chat. Then teammates only need to:
+Then teammates only need to:
 
 ```
 cp .env.example .env
@@ -303,21 +291,11 @@ cp .env.example .env
 docker compose up
 ```
 
-Docker pulls the images automatically. No Python, no pip install, no source code needed.
-
-> Apple Silicon users (M1/M2/M3): If teammates are on Windows/Linux Intel machines, build for both platforms:
->
-> docker buildx build --platform linux/amd64,linux/arm64 -t YOUR_USERNAME/eco-cleaner:latest --push ./services/cleaner-service
->
-> docker buildx build --platform linux/amd64,linux/arm64 -t YOUR_USERNAME/eco-analytics:latest --push ./services/analytics-service
->
-> docker buildx build --platform linux/amd64,linux/arm64 -t YOUR_USERNAME/eco-chat:latest --push ./services/chat-service
-
 ---
 
 ## Test Prompts — See the Savings
 
-Use these prompts in the chat to demonstrate cleaning in action. After each one, a toast notification pops up showing the original vs cleaned text. Check http://localhost:5002/dashboard after all 5 to see the full session analytics.
+Use these prompts to demonstrate cleaning in action. Check http://localhost:5002/dashboard after all 6 to see the full session analytics.
 
 ---
 
@@ -399,13 +377,40 @@ Expected savings: ~40 tokens, ~60% reduction
 
 ---
 
+### HIGH SAVINGS — Context trimming in action
+
+Paste this in:
+
+    You are a helpful AI assistant. Please make sure to respond in a concise manner. In order to understand machine learning, I need you to explain it to me due to the fact that I have an exam tomorrow.
+
+Cleaned to:
+
+    Explain machine learning to me because I have an exam tomorrow.
+
+Expected savings: ~20 tokens, ~55% reduction (context preamble + token compression)
+
+---
+
+### CACHE HIT — Send a near-duplicate to demonstrate caching
+
+First send:
+
+    What is photosynthesis?
+
+Then send:
+
+    What is photosynthesis
+
+(no question mark — semantically identical). The second query returns instantly from the semantic cache. The `_trace` in the API response will show `cache_hit: true`.
+
+---
+
 ### What to check on the dashboard after all 6 prompts
 
 Open http://localhost:5002/dashboard. You should see:
 
 - Total prompts cleaned: 6
 - Tokens saved: roughly 120 tokens across the session
-- Cost saved: around $0.000006 USD (tiny individually, but multiplied across millions of users this becomes significant)
 - Avg reduction: around 45-50% per prompt
 - Bar chart showing raw vs cleaned token counts for each request
 - The zero-savings prompt visible in the table, proving the system is honest
@@ -500,6 +505,7 @@ print('Done')
 "
 ```
 
+---
 
 **401 Unauthorized from Groq**
 
@@ -513,7 +519,17 @@ The GROQ_API_KEY value must start with gsk_. Confirm it is active at https://con
 
 **Analytics dashboard shows no data**
 
-The dashboard auto-refreshes every 5 seconds. Send at least one message in the chat first, then check the dashboard. If still empty, click the refresh button and check the browser developer console (F12) for errors.
+The dashboard auto-refreshes every 5 seconds. Send at least one message in the chat first. If still empty, click the refresh button and check the browser console (F12) for errors.
+
+---
+
+**"relation 'events' does not exist"**
+
+The analytics table was renamed from `events` to `event`. Wipe the old Postgres volume and rebuild:
+```
+docker compose down -v
+docker compose up --build
+```
 
 ---
 
@@ -525,13 +541,25 @@ The chat service gracefully falls back if the cleaner service is unreachable —
 
 ## How Prompt Cleaning Works
 
-The cleaner-service runs every prompt through 5 steps before it ever reaches the LLM:
+Every prompt passes through a 3-stage pipeline before reaching the LLM:
 
-1. Normalize — strips invisible unicode characters (zero-width spaces, BOM markers), collapses multiple spaces and newlines into single ones
-2. Remove openers — strips conversational starters like "Hey!", "Hi there, so basically...", "Okay so...", "Alright,"
-3. Strip filler phrases — removes around 25 patterns including: "can you please", "just", "basically", "I was wondering if", "um", "kind of", "you know", "honestly", "sort of", "thanks in advance", "if that's okay", and more
-4. Deduplicate sentences — removes repeated sentences, common when users copy-paste the same paragraph twice into a prompt
-5. Fix artifacts — cleans up orphaned punctuation and double spaces left after the removals
+**Stage 1 — Rule-based cleaner (cleaner-service)**
+
+1. Normalize — strips invisible unicode characters, collapses multiple spaces and newlines
+2. Remove openers — strips conversational starters like "Hey!", "Hi there, so basically...", "Okay so..."
+3. Strip filler phrases — removes ~25 patterns: "can you please", "just", "basically", "I was wondering if", "um", "kind of", "you know", "honestly", "sort of", "thanks in advance", and more
+4. Context trimming — removes verbose preambles like "You are a helpful AI assistant. Please respond concisely."
+5. Token compression — replaces wordy phrases: "in order to" → "to", "due to the fact that" → "because", etc.
+6. Deduplicate sentences — removes repeated sentences from copy-paste
+7. Fix artifacts — cleans up orphaned punctuation and double spaces
+
+**Stage 2 — T5 + LoRA shortener (aimodel-service)**
+
+The cleaned prompt is passed to a fine-tuned T5-small model for further shortening. If the output is less than 40% of the input length (over-compression), the system falls back to the Stage 1 result.
+
+**Stage 3 — Semantic cache (chat-service)**
+
+Before calling the LLM, the query is compared against cached queries using TF-IDF cosine similarity. If a match above 0.92 threshold is found, the cached response is returned immediately — no LLM call made.
 
 ### How savings are calculated
 
@@ -539,12 +567,12 @@ All metrics are real calculations, not estimates:
 
 | Metric | Formula |
 |---|---|
-| saved_tokens | count_tokens(original) minus count_tokens(cleaned) |
+| saved_tokens | count_tokens(original) minus count_tokens(final_query) |
 | saved_cost_usd | saved_tokens divided by 1,000,000 multiplied by $0.05 (Groq Llama 3.1 8B input pricing) |
 | saved_energy_wh | saved_tokens divided by 1,000 multiplied by 0.001 Wh (MLPerf GPU inference average) |
 | saved_co2_g | saved_energy_wh multiplied by 0.4 (US EPA average grid carbon intensity) |
 
-Token count uses a words divided by 0.75 approximation (industry rule of thumb). For production accuracy, replace with tiktoken and the exact model tokenizer.
+Token count uses tiktoken with `cl100k_base` encoding (close approximation for Llama 3.1, variance under 3%).
 
 ---
 
@@ -558,53 +586,21 @@ Browser
        v
 chat-service :5000
   Serves chat UI
-  Calls cleaner before every LLM request
-  Calls analytics after every response
+  Semantic cache (TF-IDF + cosine similarity)
+  Orchestrates cleaning pipeline
   Manages conversation history
-       |               |
-       v               v
-cleaner-service    analytics-service
-:5001              :5002
-  NLP cleaning       Event store
-  Token metrics      REST API
-  Cost/energy calc   Dashboard HTML
+       |         |              |
+       v         v              v
+cleaner-      aimodel-      analytics-
+service       service       service
+:5001         :5003         :5002
+  Rule-based    T5 + LoRA     Event store
+  NLP cleaning  query         REST API
+  Context       shortener     Dashboard HTML
+  trimming
        |
        v
+  (cache miss only)
 Groq Cloud API (LLM)
 ```
 
-### Why three separate services?
-
-| Service | Container | Scales independently? | Why? |
-|---|---|---|---|
-| chat-service | eco-chat | Yes | User-facing, owns session state |
-| cleaner-service | eco-cleaner | Yes | CPU-bound NLP, run many replicas |
-| analytics-service | eco-analytics | Yes | I/O-bound, shard by user/org |
-
-Each service has its own Dockerfile and requirements.txt with zero shared code, ready for independent Kubernetes Deployment objects.
-
----
-
-## Kubernetes — Future Deployment
-
-Each service maps 1:1 to a K8s Deployment + Service. The only change needed is swapping Docker network hostnames for K8s ClusterIP service names via environment variables. No code changes required.
-
-```yaml
-env:
-  - name: GROQ_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: groq-secret
-        key: api-key
-  - name: CLEANER_URL
-    value: "http://eco-cleaner-svc:5001"
-  - name: ANALYTICS_URL
-    value: "http://eco-analytics-svc:5002"
-```
-
-Recommended migration path:
-1. Push images to Docker Hub or a private registry like AWS ECR or GCP Artifact Registry
-2. Write Deployment and ClusterIP Service YAML for each of the services
-3. Store GROQ_API_KEY in a K8s Secret — never hardcode secrets in YAML files
-4. Expose chat-service externally via a LoadBalancer or Ingress
-5. Replace containerised Postgres with managed DB (AWS RDS, GCP Cloud SQL)
