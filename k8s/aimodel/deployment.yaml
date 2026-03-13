@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aimodel
+  namespace: ecoprompt
+  labels:
+    app: aimodel
+    app.kubernetes.io/part-of: ecoprompt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aimodel
+  template:
+    metadata:
+      labels:
+        app: aimodel
+    spec:
+      containers:
+        - name: aimodel
+          image: ecoprompt/eco-aimodel:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5003
+          envFrom:
+            - configMapRef:
+                name: ecoprompt-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5003
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5003
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"

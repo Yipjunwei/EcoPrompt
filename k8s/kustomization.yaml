@@ -1,0 +1,53 @@
+# ── Kustomize entry point ─────────────────────────────────────────────────────
+# Apply everything in the correct order:
+#   kubectl apply -k k8s/
+#
+# Or apply individually:
+#   kubectl apply -f k8s/namespace.yaml
+#   kubectl apply -f k8s/configmap.yaml
+#   kubectl apply -f k8s/secret.yaml          # fill in real values first!
+#   kubectl apply -f k8s/llm-external-service.yaml
+#   kubectl apply -f k8s/postgres/
+#   kubectl apply -f k8s/cleaner/
+#   kubectl apply -f k8s/analytics/
+#   kubectl apply -f k8s/aimodel/
+#   kubectl apply -f k8s/chat/
+#   kubectl apply -f k8s/ingress.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ecoprompt
+
+resources:
+  # ── Namespace first ──────────────────────────────────────────────────────────
+  - namespace.yaml
+
+  # ── Shared config & secrets ───────────────────────────────────────────────────
+  - configmap.yaml
+  - secret.yaml
+
+  # ── External LLM service alias ────────────────────────────────────────────────
+  - llm-external-service.yaml
+
+  # ── Persistent database ────────────────────────────────────────────────────────
+  - postgres/statefulset.yaml
+  - postgres/service.yaml
+
+  # ── Application microservices ─────────────────────────────────────────────────
+  - cleaner/deployment.yaml
+  - cleaner/service.yaml
+
+  - analytics/deployment.yaml
+  - analytics/service.yaml
+
+  - aimodel/deployment.yaml
+  - aimodel/service.yaml
+
+  - chat/deployment.yaml
+  - chat/service.yaml
+  - chat/hpa.yaml
+
+  # ── Ingress (requires ingress-nginx controller) ───────────────────────────────
+  - ingress.yaml

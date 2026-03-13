@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cleaner-svc
+  namespace: ecoprompt
+  labels:
+    app: cleaner
+    app.kubernetes.io/part-of: ecoprompt
+spec:
+  type: ClusterIP
+  selector:
+    app: cleaner
+  ports:
+    - port: 5001
+      targetPort: 5001
+      protocol: TCP

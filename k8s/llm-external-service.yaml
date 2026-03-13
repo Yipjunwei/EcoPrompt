@@ -1,0 +1,22 @@
+# ── ExternalName Service: llm-external ────────────────────────────────────────
+# Creates a Kubernetes-native DNS alias (llm-external.ecoprompt.svc.cluster.local)
+# that resolves to the Groq hosted chat-completions endpoint (api.groq.com).
+#
+# This allows the chat-service to reference the LLM provider via a stable
+# internal service name rather than a hardcoded external hostname, making
+# the provider swappable without code changes — just update externalName.
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-external
+  namespace: ecoprompt
+  labels:
+    app.kubernetes.io/part-of: ecoprompt
+spec:
+  type: ExternalName
+  externalName: api.groq.com
+  ports:
+    - port: 443
+      protocol: TCP

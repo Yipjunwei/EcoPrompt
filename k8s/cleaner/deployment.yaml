@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cleaner
+  namespace: ecoprompt
+  labels:
+    app: cleaner
+    app.kubernetes.io/part-of: ecoprompt
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cleaner
+  template:
+    metadata:
+      labels:
+        app: cleaner
+    spec:
+      containers:
+        - name: cleaner
+          image: ecoprompt/eco-cleaner:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - configMapRef:
+                name: ecoprompt-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

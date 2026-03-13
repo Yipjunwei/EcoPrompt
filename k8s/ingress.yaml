@@ -1,0 +1,73 @@
+# ── NGINX Ingress ──────────────────────────────────────────────────────────────
+# Routes external traffic into the ecoprompt namespace.
+#
+# Prerequisites:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+#
+# The ingress-nginx controller is deployed in the ingress-nginx namespace and
+# exposed via a LoadBalancer Service. Once an external IP is assigned, point
+# your domain's A record at it (or use it directly for testing).
+#
+# Routing rules:
+#   /            → chat-svc:5000   (main chat UI)
+#   /api/*       → chat-svc:5000   (API endpoints including /api/inspect)
+#   /dashboard   → analytics-svc:5002  (analytics dashboard, no prefix strip)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Chat ingress (with rewrite to strip leading slash group) ─────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ecoprompt-chat-ingress
+  namespace: ecoprompt
+  labels:
+    app.kubernetes.io/part-of: ecoprompt
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # ── All traffic (except /dashboard) → chat-svc ──────────────────────
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: chat-svc
+                port:
+                  number: 5000
+
+---
+# ── Analytics ingress (no rewrite — analytics serves at /dashboard itself) ───
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ecoprompt-analytics-ingress
+  namespace: ecoprompt
+  labels:
+    app.kubernetes.io/part-of: ecoprompt
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # ── /dashboard → analytics-svc (path preserved, no rewrite) ─────────
+          - path: /dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics-svc
+                port:
+                  number: 5002
