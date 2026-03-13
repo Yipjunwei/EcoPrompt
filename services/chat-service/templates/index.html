@@ -309,7 +309,7 @@
           <span class="energy-card-val" id="avg-tokens">0 / query</span>
         </div>
       </div>
-      <a href="http://localhost:5002/dashboard" target="_blank" style="display:block;text-align:center;margin:16px 0 4px;padding:10px 0;border-radius:10px;background:rgba(77,139,255,0.10);border:1px solid rgba(77,139,255,0.25);color:#4D8BFF;font-size:12px;font-weight:700;letter-spacing:0.08em;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='rgba(77,139,255,0.18)'" onmouseout="this.style.background='rgba(77,139,255,0.10)'">
+      <a href="/dashboard" target="_blank" style="display:block;text-align:center;margin:16px 0 4px;padding:10px 0;border-radius:10px;background:rgba(77,139,255,0.10);border:1px solid rgba(77,139,255,0.25);color:#4D8BFF;font-size:12px;font-weight:700;letter-spacing:0.08em;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='rgba(77,139,255,0.18)'" onmouseout="this.style.background='rgba(77,139,255,0.10)'">
         📊 Open Full Dashboard →
       </a>
       <p class="drawer-note">
@@ -574,9 +574,10 @@
 
         // ── Real metrics from cleaner service ──
         const m = data.metrics || {};
-        const finalReduced = data.short_query || data.cleaned;
-        if (m.saved_tokens > 0 && finalReduced && finalReduced !== query) {
-          showCleanToast(query, finalReduced, m);
+        const stage1 = data.cleaned || query;
+        const stage2 = data.short_query || stage1;
+        if (m.saved_tokens > 0 || stage1 !== query || stage2 !== stage1) {
+          showCleanToast(query, stage1, stage2, m, data.cache_hit || false);
         }
         stats.savedTokens    = (stats.savedTokens    || 0) + (m.saved_tokens    || 0);
         stats.savedCostUsd   = (stats.savedCostUsd   || 0) + (m.saved_cost_usd  || 0);
@@ -673,44 +674,55 @@
       } catch(e) { console.warn('metrics fetch failed', e); }
     }
 
-    /* ── toast: show original vs cleaned prompt ── */
-    function showCleanToast(original, cleaned, metrics) {
+    /* ── toast: show all pipeline stages ── */
+    function showCleanToast(original, stage1, stage2, metrics, cacheHit) {
       const existing = document.getElementById('clean-toast');
       if (existing) existing.remove();
+
+      const stageBox = (label, text, bgColor, borderColor, labelColor) => `
+        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:10px;">
+          <div style="font-size:9px;color:${labelColor};letter-spacing:0.12em;margin-bottom:5px;font-weight:700">${label}</div>
+          <div style="font-size:11px;color:#EAEAEA;line-height:1.5;max-height:72px;overflow-y:auto;word-break:break-word">${escHtml(text)}</div>
+        </div>`;
+
+      const cacheTag = cacheHit
+        ? `<span style="background:rgba(245,197,66,0.12);color:#F5C542;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px">⚡ CACHE HIT</span>`
+        : '';
+
+      const slmTag = (stage2 && stage2 !== stage1)
+        ? `<span style="background:rgba(180,120,255,0.12);color:#C47FFF;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px">🔬 SLM used</span>`
+        : '';
 
       const toast = document.createElement('div');
       toast.id = 'clean-toast';
       toast.style.cssText = `
         position:fixed;bottom:24px;right:24px;z-index:9999;
         background:#0E1525;border:1px solid rgba(62,201,122,0.30);
-        border-radius:14px;padding:18px 20px;max-width:400px;
+        border-radius:14px;padding:18px 20px;max-width:460px;width:460px;
         box-shadow:0 8px 40px rgba(0,0,0,0.50);
         animation:toast-in 0.3s cubic-bezier(0.22,1,0.36,1) both;
       `;
       toast.innerHTML = `
         <style>@keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}</style>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:rgba(62,201,122,0.90)">✦ PROMPT CLEANED</span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:rgba(62,201,122,0.90)">✦ PIPELINE TRACE</span>
           <button onclick="this.closest('#clean-toast').remove()" style="background:none;border:none;color:rgba(234,234,234,0.35);cursor:pointer;font-size:14px;padding:0">✕</button>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div style="background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.15);border-radius:8px;padding:10px;">
-            <div style="font-size:9px;color:rgba(255,107,107,0.70);letter-spacing:0.12em;margin-bottom:5px">ORIGINAL</div>
-            <div style="font-size:11px;color:#EAEAEA;line-height:1.5;max-height:60px;overflow:hidden;text-overflow:ellipsis">${escHtml(original)}</div>
-          </div>
-          <div style="background:rgba(62,201,122,0.08);border:1px solid rgba(62,201,122,0.15);border-radius:8px;padding:10px;">
-            <div style="font-size:9px;color:rgba(62,201,122,0.70);letter-spacing:0.12em;margin-bottom:5px">CLEANED</div>
-            <div style="font-size:11px;color:#EAEAEA;line-height:1.5;max-height:60px;overflow:hidden;text-overflow:ellipsis">${escHtml(cleaned)}</div>
-          </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+          ${stageBox('ORIGINAL', original,
+              'rgba(255,107,107,0.08)', 'rgba(255,107,107,0.20)', 'rgba(255,107,107,0.75)')}
+          ${stageBox('SENT TO LLM', stage2 || stage1,
+              'rgba(62,201,122,0.08)', 'rgba(62,201,122,0.20)', 'rgba(62,201,122,0.80)')}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <span style="background:rgba(62,201,122,0.12);color:#3EC97A;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px">−${metrics.saved_tokens} tokens</span>
           <span style="background:rgba(77,139,255,0.12);color:#4D8BFF;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px">${metrics.reduction_pct}% smaller</span>
           <span style="background:rgba(245,197,66,0.12);color:#F5C542;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px">${metrics.saved_energy_wh.toFixed(6)} Wh saved</span>
+          ${cacheTag}${slmTag}
         </div>
       `;
       document.body.appendChild(toast);
-      setTimeout(() => { if (toast.isConnected) toast.remove(); }, 7000);
+      setTimeout(() => { if (toast.isConnected) toast.remove(); }, 10000);
     }
 
     function escHtml(s) {
@@ -723,7 +735,7 @@
     drawerClose.addEventListener('click', closeDrawer);
     overlay.addEventListener('click', closeDrawer);
     resetBtn.addEventListener('click', async () => {
-      await fetch('http://localhost:5002/reset', { method: 'POST' });
+      await fetch('/api/analytics/reset', { method: 'POST' });
       updateDrawer();
 });
 updateDrawer();
