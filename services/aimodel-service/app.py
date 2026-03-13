@@ -3,7 +3,7 @@ AI Model Service
 ----------------
 Loads base model + LoRA adapter and exposes a /infer endpoint.
 
-Microservice boundary: this runs as its own Flask app on port 5002.
+Microservice boundary: this runs as its own Flask app on port 5003.
 In production → Docker container, sits behind the API gateway.
 """
 
@@ -22,8 +22,10 @@ BASE_MODEL = os.environ.get("BASE_MODEL", "t5-small")
 LORA_PATH = os.environ.get("LORA_PATH", "../../slm-training/out_lora_t5_query_cleaner")
 PORT = int(os.environ.get("AIMODEL_PORT", "5003"))
 
-MAX_SOURCE_LEN = int(os.environ.get("MAX_SOURCE_LEN", "256"))
-MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "32"))
+MAX_SOURCE_LEN        = int(os.environ.get("MAX_SOURCE_LEN",        "256"))
+MAX_NEW_TOKENS        = int(os.environ.get("MAX_NEW_TOKENS",        "32"))
+NO_REPEAT_NGRAM_SIZE  = int(os.environ.get("NO_REPEAT_NGRAM_SIZE",  "3"))
+REPETITION_PENALTY    = float(os.environ.get("REPETITION_PENALTY",  "1.2"))
 
 PROMPT_HEAD = os.environ.get(
     "PROMPT_HEAD",
@@ -68,12 +70,20 @@ def infer():
         out_ids = model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            no_repeat_ngram_size=3,
-            repetition_penalty=1.2,
+            no_repeat_ngram_size=NO_REPEAT_NGRAM_SIZE,
+            repetition_penalty=REPETITION_PENALTY,
         )
 
-    pred = tokenizer.decode(out_ids[0], skip_special_tokens=True)
-    pred = normalize_text(pred)
+    pred = tokenizer.decode(out_ids[0], skip_special_tokens=True).strip()
+    pred = re.sub(r"\s+", " ", pred)
+
+    # Fallback: if model returns empty, echo the input back
+    if not pred:
+        pred = re.sub(r"\s+", " ", text.strip())
+
+    # Preserve capitalization
+    if pred:
+        pred = pred[0].upper() + pred[1:]
 
     return jsonify({"query": pred})
 

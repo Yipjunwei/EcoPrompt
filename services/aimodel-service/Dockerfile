@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 
 RUN mkdir -p /models
+COPY out_lora_t5_query_cleaner /models/out_lora_t5_query_cleaner
 
-EXPOSE 5002
+EXPOSE 5003
 
 CMD ["python", "app.py"]
