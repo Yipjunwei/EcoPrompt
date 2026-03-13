@@ -33,7 +33,7 @@ def init_db():
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS events (
+                CREATE TABLE IF NOT EXISTS event (
                     id               SERIAL PRIMARY KEY,
                     timestamp        TIMESTAMPTZ NOT NULL,
                     raw_tokens       INTEGER NOT NULL,
@@ -80,7 +80,7 @@ def record_event():
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO events
+                INSERT INTO event
                     (timestamp, raw_tokens, clean_tokens, saved_tokens,
                      saved_cost_usd, saved_energy_wh, saved_co2_g, reduction_pct)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -113,12 +113,12 @@ def metrics():
                     COALESCE(SUM(saved_energy_wh), 0)  AS total_saved_energy_wh,
                     COALESCE(SUM(saved_co2_g), 0)      AS total_saved_co2_g,
                     COALESCE(AVG(reduction_pct), 0)    AS avg_reduction_pct
-                FROM events;
+                FROM event;
             """)
             totals = dict(cur.fetchone())
 
             cur.execute("""
-                SELECT * FROM events
+                SELECT * FROM event
                 ORDER BY timestamp DESC
                 LIMIT 20;
             """)
@@ -139,7 +139,7 @@ def reset():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE events;")
+            cur.execute("TRUNCATE TABLE event;")
             conn.commit()
     finally:
         release_conn(conn)
