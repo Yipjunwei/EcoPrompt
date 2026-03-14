@@ -214,11 +214,17 @@ Make sure your `.env` file is filled in, then run:
 # Linux / macOS
 ./scripts/deploy.sh
 
+# Linux / macOS (also starts ingress port-forward on :8080)
+./scripts/deploy.sh --ingress-port-forward
+
 # Windows (PowerShell)
 ./scripts/deploy.ps1
+
+# Windows (PowerShell, also starts ingress port-forward on :8080)
+./scripts/deploy.ps1 -IngressPortForward
 ```
 
-This builds all 4 images, injects secrets from your `.env`, and applies all k8s manifests. `secret.yaml` is restored to its placeholder state afterwards so it stays safe to commit.
+This builds all 4 images, injects secrets from your `.env`, and applies all k8s manifests. On first run, both deploy scripts install ingress-nginx automatically and wait for it to be ready. `secret.yaml` is restored to its placeholder state afterwards so it stays safe to commit.
 
 Verify everything is running:
 ```
@@ -226,6 +232,21 @@ kubectl get all -n ecoprompt
 ```
 
 ### Access the app
+
+Quick localhost access (recommended for dev):
+
+```bash
+kubectl port-forward -n ecoprompt svc/chat-svc 5000:5000
+kubectl port-forward -n ecoprompt svc/analytics-svc 5002:5002
+```
+
+Open:
+- http://localhost:5000
+- http://localhost:5002/dashboard
+
+Note: `kubectl port-forward` stays in the foreground by design. Keep those terminals open while using the app.
+
+Ingress access:
 
 ```
 kubectl get svc -n ingress-nginx ingress-nginx-controller

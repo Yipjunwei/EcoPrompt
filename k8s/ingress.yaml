@@ -12,6 +12,8 @@
 #   /            → chat-svc:5000   (main chat UI)
 #   /api/*       → chat-svc:5000   (API endpoints including /api/inspect)
 #   /dashboard   → analytics-svc:5002  (analytics dashboard, no prefix strip)
+#   /metrics     → analytics-svc:5002  (dashboard data API)
+#   /reset       → analytics-svc:5002  (dashboard reset endpoint)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Chat ingress (with rewrite to strip leading slash group) ─────────────────
@@ -65,6 +67,21 @@ spec:
         paths:
           # ── /dashboard → analytics-svc (path preserved, no rewrite) ─────────
           - path: /dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics-svc
+                port:
+                  number: 5002
+          # ── /metrics and /reset are called by dashboard JS from ingress host ─
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics-svc
+                port:
+                  number: 5002
+          - path: /reset
             pathType: Prefix
             backend:
               service:

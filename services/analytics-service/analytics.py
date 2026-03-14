@@ -98,6 +98,7 @@ def record_event():
 
 
 @app.route("/metrics")
+@app.route("/dashboard/metrics")
 def metrics():
     """Returns current aggregate totals + recent event list."""
     conn = get_conn()
@@ -135,6 +136,7 @@ def metrics():
 
 
 @app.route("/reset", methods=["POST"])
+@app.route("/dashboard/reset", methods=["POST"])
 def reset():
     conn = get_conn()
     try:

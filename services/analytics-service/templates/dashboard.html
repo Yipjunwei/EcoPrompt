@@ -354,7 +354,7 @@
     async function fetchAndRender() {
       let data;
       try {
-        const r = await fetch('/metrics');
+        const r = await fetch('/dashboard/metrics');
         data = await r.json();
         if (data.error) throw new Error(data.error);
       } catch (e) {
@@ -420,7 +420,7 @@
     // ── Reset ─────────────────────────────────────────────────────────────────
     document.getElementById('reset-btn').addEventListener('click', async () => {
       if (!confirm('Reset all analytics data? This cannot be undone.')) return;
-      await fetch('/reset', { method: 'POST' });
+      await fetch('/dashboard/reset', { method: 'POST' });
       fetchAndRender();
     });
 
